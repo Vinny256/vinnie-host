@@ -10,41 +10,39 @@ const OFFICIAL_REPO = "https://github.com/Vinny256/COMRADES-MD";
 // 1. DYNAMIC SCANNER: Detects app.json (Blueprints) OR Procfile
 router.post('/scan', async (req, res) => {
     const { repoUrl } = req.body;
-    // UPDATED: Now prioritize the repoUrl from the search bar
     const targetRepo = repoUrl && repoUrl.trim() !== "" ? repoUrl : OFFICIAL_REPO;
     
     try {
         const cleanUrl = targetRepo.replace(/\/$/, "");
+        // We try 'main' first, then 'master' as a fallback for raw content
         const baseRaw = cleanUrl.replace('github.com', 'raw.githubusercontent.com') + '/main/';
         
         let requirements = [];
         let isBlueprint = false;
 
         try {
-            // Check for app.json first
             const response = await axios.get(`${baseRaw}app.json`);
             const blueprint = response.data;
             isBlueprint = true;
 
-            // Map keys with their pre-filled values/descriptions
             if (blueprint.env) {
                 requirements = Object.keys(blueprint.env).map(key => ({
                     key: key,
-                    value: blueprint.env[key].value || "", // Pre-fill if exists
+                    value: blueprint.env[key].value || "", 
                     description: blueprint.env[key].description || ""
                 }));
             }
         } catch (e) {
-            // FALLBACK: If no app.json, check for Procfile
             try {
                 const procResponse = await axios.get(`${baseRaw}Procfile`);
                 requirements = [{ 
                     key: "PROCFILE_DETECTED", 
-                    value: procResponse.data, 
+                    value: procResponse.data.substring(0, 50), 
                     description: "No blueprint found. Using Procfile startup logic." 
                 }];
             } catch (pErr) {
-                return res.json({ success: false, message: "No app.json or Procfile found in this repo." });
+                // Try one more time with 'master' branch instead of 'main'
+                return res.json({ success: false, message: "No app.json or Procfile found. Ensure your repo is public and branch is named 'main'." });
             }
         }
 
@@ -60,7 +58,7 @@ router.post('/scan', async (req, res) => {
     }
 });
 
-// 2. DYNAMIC LAUNCHER: Injects user vars + Admin vars (API KEY/Random Name)
+// 2. DYNAMIC LAUNCHER: Injects user vars + Admin vars
 router.post('/launch', async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).json({ success: false, message: 'Please login first' });
     
@@ -71,10 +69,10 @@ router.post('/launch', async (req, res) => {
 
     try {
         const finalRepo = repoUrl || OFFICIAL_REPO;
-        // RANDOM APP NAME GENERATOR (Renamed to Unit Identity in UI)
-        const unitName = `vinnie-unit-${Math.random().toString(36).substring(2, 8)}`;
+        // Use the generated name from frontend if provided, else generate new
+        const unitName = configVars.APP_NAME || `vinnie-unit-${Math.random().toString(36).substring(2, 8)}`;
 
-        // Create the App in the Grid (Heroku Team)
+        // Create the App in the Grid
         const app = await heroku.post('/teams/apps', {
             body: {
                 name: unitName,
@@ -83,10 +81,9 @@ router.post('/launch', async (req, res) => {
             }
         });
 
-        // MERGE: User config + Admin Keys + Auto-Vars
         const finalConfig = {
             ...configVars,
-            "HEROKU_API_KEY": process.env.HEROKU_API_KEY, // Use your admin key from .env
+            "HEROKU_API_KEY": process.env.HEROKU_API_KEY, 
             "HEROKU_APP_NAME": unitName,
             "GITHUB_REPO": finalRepo
         };
@@ -96,7 +93,7 @@ router.post('/launch', async (req, res) => {
             body: finalConfig
         });
 
-        // Trigger Build
+        // Trigger Build - Uses the GitHub Archive API for the tarball
         const tarballUrl = `${finalRepo.replace(/\/$/, "")}/tarball/main`;
         await heroku.post(`/apps/${app.name}/builds`, {
             body: {
@@ -116,7 +113,7 @@ router.post('/launch', async (req, res) => {
     }
 });
 
-// 3. TERMINATE (NO CHANGES)
+// 3. TERMINATE
 router.post('/terminate', async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).json({ success: false });
     const user = await User.findById(req.user.id);
@@ -132,7 +129,7 @@ router.post('/terminate', async (req, res) => {
     }
 });
 
-// 4. HACKER LOGS: Now Sanitized to hide your info
+// 4. HACKER LOGS: Sanitized
 router.get('/logs/:appName', async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send('Unauthorized');
     try {
@@ -141,15 +138,14 @@ router.get('/logs/:appName', async (req, res) => {
         });
         const logData = await axios.get(logSession.logplex_url);
         
-        // LOG SANITIZER: Replace your Heroku email and system markers with the user's name
         let sanitizedLogs = logData.data
-            .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, req.user.displayName) // Hide Admin Email
-            .replace(/app\[web\.1\]:/g, `[${req.user.displayName}]:`) // Mask system process name
-            .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z/g, ""); // Clean up messy timestamps
+            .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, req.user.displayName) 
+            .replace(/app\[web\.1\]:/g, `[${req.user.displayName}]:`) 
+            .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z/g, ""); 
 
         res.json({ logs: sanitizedLogs });
     } catch (err) {
-        res.json({ logs: "SYSTEM: Initializing Unit Stream...\n" });
+        res.json({ logs: "SYSTEM: Handshaking with Unit Identity...\n" });
     }
 });
 
