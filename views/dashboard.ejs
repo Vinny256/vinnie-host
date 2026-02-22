@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vinnie Host | Grid Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
+    <style>
+        :root { --bg: #0b0f1a; --card: rgba(255, 255, 255, 0.03); --border: rgba(255, 255, 255, 0.08); --accent: #3b82f6; --matrix: #33ff33; --success: #22c55e; --danger: #ef4444; }
+        
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; transition: 0.3s; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+        * { scrollbar-width: thin; scrollbar-color: #1e293b transparent; }
+
+        body { background: var(--bg); color: white; font-family: 'Inter', sans-serif; margin: 0; display: flex; flex-direction: column; min-height: 100vh; overflow-x: hidden; }
+        
+        nav { padding: 15px 5%; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); backdrop-filter: blur(10px); position: sticky; top: 0; z-index: 1000; background: rgba(11, 15, 26, 0.8); }
+        .slot-pill { background: rgba(59, 130, 246, 0.1); color: var(--accent); padding: 6px 15px; border-radius: 20px; font-size: 0.85rem; font-weight: bold; border: 1px solid rgba(59, 130, 246, 0.3); }
+
+        .container { flex: 1; padding: 30px 5%; max-width: 1400px; margin: 0 auto; width: 90%; position: relative; }
+        
+        /* AUTH OVERLAY */
+        .auth-overlay { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            z-index: 9999; display: none; align-items: center; justify-content: center; 
+            background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(8px);
+        }
+        .auth-prompt { 
+            background: rgba(15, 23, 42, 0.95); border: 1px solid var(--accent); 
+            padding: 40px; border-radius: 24px; text-align: center; 
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5); max-width: 400px; width: 90%;
+        }
+
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 25px; margin-top: 20px; }
+        .unit-card { background: var(--card); border: 1px solid var(--border); padding: 25px; border-radius: 20px; position: relative; transition: 0.3s; }
+        .recommend-tag { position: absolute; top: -10px; right: 20px; background: var(--accent); color: white; padding: 4px 12px; border-radius: 10px; font-size: 0.7rem; font-weight: bold; text-transform: uppercase; }
+
+        .btn-deploy { background: var(--accent); color: white; padding: 12px 20px; border-radius: 10px; border: none; cursor: pointer; font-weight: bold; width: 100%; margin-top: 15px; transition: 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; }
+        .btn-deploy:hover { transform: scale(1.02); box-shadow: 0 0 20px rgba(59, 130, 246, 0.4); }
+        
+        .btn-action { background: rgba(255,255,255,0.05); color: white; border: 1px solid var(--border); padding: 8px 15px; border-radius: 8px; cursor: pointer; font-size: 0.8rem; transition: 0.2s; text-decoration: none; }
+        
+        input { width: 100%; padding: 12px; margin-top: 10px; border-radius: 8px; border: 1px solid #1e293b; background: rgba(0,0,0,0.4); color: white; box-sizing: border-box; outline: none; }
+        .terminal { background: #050a14; color: var(--matrix); padding: 20px; border-radius: 12px; font-family: 'Courier New', monospace; font-size: 13px; height: 350px; overflow-y: auto; border: 1px solid #1e293b; white-space: pre-wrap; position: relative; }
+        
+        .toggle-box { display: flex; align-items: center; justify-content: space-between; margin-top: 15px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px; font-size: 0.85rem; }
+        .name-gen { display: flex; gap: 10px; align-items: center; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 10px; border: 1px dashed var(--border); }
+        .promo-text { font-size: 0.75rem; color: #94a3b8; margin-top: 10px; display: block; line-height: 1.4; }
+    </style>
+</head>
+<body>
+
+    <div class="auth-overlay" id="auth-gate">
+        <div class="auth-prompt">
+            <div style="text-align: right;"><button onclick="closeAuth()" style="background:none; border:none; color:white; cursor:pointer;"><i class="fa-solid fa-xmark"></i></button></div>
+            <i class="fa-solid fa-bolt-lightning fa-3x" style="color: var(--accent); margin-bottom: 20px;"></i>
+            <h2 style="margin: 0;">Access The Grid</h2>
+            <span class="promo-text">
+                <i class="fa-solid fa-circle-check" style="color: var(--success);"></i> 
+                You can deploy <b>any</b> backend app for up to <b>1 active instance</b> upon login.
+            </span>
+            <hr style="border:0; border-top:1px solid var(--border); margin: 20px 0;">
+            
+            <a href="/auth/github" class="btn-deploy" style="margin-bottom: 12px;">
+                <i class="fa-brands fa-github"></i> Authenticate with GitHub
+            </a>
+            <a href="/auth/google" class="btn-deploy" style="background: #ffffff; color: #1f2937; margin-top: 0;">
+                <i class="fa-brands fa-google"></i> Authenticate with Google
+            </a>
+            <p style="font-size: 0.7rem; color: #475569; margin-top: 15px;">Secure OAuth2 Protocol</p>
+        </div>
+    </div>
+
+    <nav>
+        <h2><i class="fa-solid fa-microchip"></i> Vinnie Grid</h2>
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <span class="slot-pill">Global Units: <%= totalDeployed %>/100</span>
+            <% if (user) { %>
+                <img src="<%= user.avatar %>" style="width:38px; border-radius:50%; border:2px solid var(--accent)">
+                <a href="/logout" style="color: #94a3b8; text-decoration: none;"><i class="fa-solid fa-right-from-bracket"></i></a>
+            <% } else { %>
+                <button onclick="triggerAuth()" class="btn-action" style="background: var(--accent); border:none;">
+                    <i class="fa-brands fa-github"></i> Sign In
+                </button>
+            <% } %>
+        </div>
+    </nav>
+
+    <div class="container">
+        <h1 style="margin-bottom: 5px;">Commander <%= user ? user.displayName : 'Guest' %></h1>
+        <p style="color: #64748b; margin-top: 0; margin-bottom: 30px;">
+            Direct interface for cloud-side unit deployment. 
+            <b style="color: var(--accent);">Limit: 1 active unit per commander.</b>
+        </p>
+        
+        <div class="grid">
+            <div class="unit-card">
+                <h3><i class="fa-solid fa-magnifying-glass"></i> Deploy Any Repository</h3>
+                <% if(user && user.hasDeployed) { %>
+                    <div style="text-align: center; padding: 40px 10px; color: #64748b;">
+                        <i class="fa-solid fa-lock fa-3x" style="margin-bottom: 15px;"></i>
+                        <p>Interface locked while Unit is Active.</p>
+                    </div>
+                <% } else { %>
+                    <p style="font-size: 0.85rem; color: #94a3b8;">Enter any GitHub URL to scan for variables.</p>
+                    <input type="text" id="repoUrl" placeholder="https://github.com/user/repo" value="https://github.com/Vinny256/COMRADES-MD">
+                    
+                    <button class="btn-deploy" id="scan-btn" onclick="checkAndAction(scanBlueprint)">
+                        <i class="fa-solid fa-radar"></i> Scan Repository
+                    </button>
+
+                    <div id="dynamic-area" style="display:none; margin-top: 20px; border-top: 1px solid var(--border); padding-top: 15px;">
+                        <div class="name-gen">
+                            <span style="font-size: 0.8rem; color: #94a3b8;">Identity:</span>
+                            <strong id="display-app-name" style="color: var(--accent); font-family: monospace;"></strong>
+                            <button class="btn-action" onclick="rotateName()" title="Rotate Identity"><i class="fa-solid fa-rotate"></i></button>
+                        </div>
+                        <div class="toggle-box">
+                            <span>Force Procfile Startup</span>
+                            <input type="checkbox" id="procfile-toggle" checked>
+                        </div>
+                        <div id="dynamic-inputs" style="max-height: 250px; overflow-y: auto; margin-top: 15px; padding-right: 5px;"></div>
+                        <button class="btn-deploy" id="launch-btn" style="background: var(--success);" disabled>
+                            <i class="fa-solid fa-bolt"></i> Inject to Grid
+                        </button>
+                    </div>
+                <% } %>
+            </div>
+
+            <div class="unit-card">
+                <div class="recommend-tag">Recommended</div>
+                <h3><i class="fa-solid fa-star"></i> Comrades MD</h3>
+                <p style="font-size: 0.85rem; color: #94a3b8;">Optimized build for the official COMRADES-MD unit.</p>
+                <button class="btn-deploy" onclick="checkAndAction(quickDeployOfficial)">
+                    <i class="fa-solid fa-cloud-arrow-up"></i> Quick Initialize
+                </button>
+
+                <hr style="border:0; border-top: 1px solid var(--border); margin: 25px 0;">
+
+                <h3><i class="fa-solid fa-server"></i> Unit Status</h3>
+                <% if(user && user.hasDeployed) { %>
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+                        <div style="width: 10px; height: 10px; background: var(--success); border-radius: 50%; box-shadow: 0 0 10px var(--success);"></div>
+                        <span style="color: var(--success); font-weight: bold;">ONLINE</span>
+                    </div>
+                    <p style="font-size: 0.85rem;"><strong>ID:</strong> <%= user.activeUnit %></p>
+                    <button class="btn-action" style="width:100%; color: var(--danger);" onclick="terminateUnit()">
+                        <i class="fa-solid fa-circle-xmark"></i> Terminate Unit
+                    </button>
+                <% } else { %>
+                    <p style="color: #64748b;">No active signal detected.</p>
+                <% } %>
+            </div>
+        </div>
+
+        <% if(user && user.hasDeployed) { %>
+        <div class="terminal-wrapper" style="margin-top: 30px;">
+            <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h3 style="color: var(--matrix); margin:0;"><i class="fa-solid fa-terminal"></i> LIVE_STREAM</h3>
+                <button class="btn-action" onclick="downloadLogs()"><i class="fa-solid fa-download"></i> Save Logs</button>
+            </div>
+            <div class="terminal" id="log-stream">Handshaking...</div>
+        </div>
+        <% } %>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+    <script>
+        const isLoggedIn = <%= user ? 'true' : 'false' %>;
+
+        function triggerAuth() { document.getElementById('auth-gate').style.display = 'flex'; }
+        function closeAuth() { document.getElementById('auth-gate').style.display = 'none'; }
+        function checkAndAction(cb) { isLoggedIn ? cb() : triggerAuth(); }
+
+        let currentGeneratedName = `vinnie-${Math.random().toString(36).substring(2, 7)}`;
+        
+        function showToast(text, color = "#3b82f6") {
+            Toastify({ text, duration: 3000, gravity: "top", position: "right", style: { background: color, borderRadius: "10px" } }).showToast();
+        }
+
+        function rotateName() {
+            currentGeneratedName = `vinnie-${Math.random().toString(36).substring(2, 7)}`;
+            if(document.getElementById('display-app-name')) document.getElementById('display-app-name').innerText = currentGeneratedName;
+            showToast("Identity Rotated");
+        }
+
+        async function quickDeployOfficial() {
+            if(!document.getElementById('repoUrl')) return;
+            document.getElementById('repoUrl').value = "https://github.com/Vinny256/COMRADES-MD";
+            scanBlueprint();
+        }
+
+        async function scanBlueprint() {
+            const repoUrl = document.getElementById('repoUrl').value;
+            const scanBtn = document.getElementById('scan-btn');
+            scanBtn.disabled = true;
+            scanBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Scanning...';
+
+            try {
+                const res = await fetch('/deploy/scan', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ repoUrl })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    const inputContainer = document.getElementById('dynamic-inputs');
+                    inputContainer.innerHTML = ''; 
+                    document.getElementById('display-app-name').innerText = currentGeneratedName;
+
+                    if (data.requirements.length === 0) {
+                        inputContainer.innerHTML = '<p style="font-size:0.8rem; color:#f59e0b;">No app.json found. Adding manual input...</p>';
+                        addManualInput(inputContainer);
+                    } else {
+                        data.requirements.forEach(item => {
+                            if(item.key !== 'HEROKU_API_KEY') createVarInput(inputContainer, item.key, item.value, item.description);
+                        });
+                    }
+                    document.getElementById('dynamic-area').style.display = 'block';
+                    document.getElementById('launch-btn').onclick = () => launchToGrid(data.repo);
+                    validateForm();
+                    showToast("Scan Complete", "#22c55e");
+                }
+            } catch (e) { showToast("Scan Failed", "#ef4444"); }
+            finally { scanBtn.disabled = false; scanBtn.innerHTML = '<i class="fa-solid fa-radar"></i> Scan Repository'; }
+        }
+
+        function createVarInput(container, key, val, desc) {
+            const div = document.createElement('div');
+            div.innerHTML = `<label style="font-size:0.7rem; color:#94a3b8; display:block; margin-top:10px;">${key}</label>
+                             <input type="text" class="env-var-input" id="var-${key}" value="${val}" placeholder="${desc || ''}">`;
+            container.appendChild(div);
+            div.querySelector('input').addEventListener('input', validateForm);
+        }
+
+        function addManualInput(container) {
+            const btn = document.createElement('button');
+            btn.className = "btn-action"; btn.style.width = "100%"; btn.innerHTML = "+ Add Variable";
+            btn.onclick = () => {
+                const key = prompt("Variable Key:");
+                if(key) createVarInput(container, key.toUpperCase(), "", "");
+            };
+            container.appendChild(btn);
+        }
+
+        function validateForm() {
+            const inputs = document.querySelectorAll('.env-var-input');
+            const launchBtn = document.getElementById('launch-btn');
+            if(!launchBtn) return;
+            let allFilled = true;
+            inputs.forEach(i => { if(i.value.trim() === "") allFilled = false; });
+            launchBtn.disabled = !allFilled;
+            launchBtn.style.opacity = allFilled ? "1" : "0.5";
+        }
+
+        async function launchToGrid(repoUrl) {
+            const configVars = { "APP_NAME": currentGeneratedName };
+            document.querySelectorAll('.env-var-input').forEach(i => configVars[i.id.replace('var-', '')] = i.value);
+            if(document.getElementById('procfile-toggle').checked) configVars["USE_PROCFILE"] = "true";
+
+            const res = await fetch('/launch/launch', { // Adjust if your route is /deploy/launch
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ repoUrl, configVars })
+            });
+            if ((await res.json()).success) window.location.reload();
+        }
+
+        async function terminateUnit() {
+            if (confirm("Terminate?")) {
+                const res = await fetch('/deploy/terminate', { method: 'POST' });
+                if ((await res.json()).success) window.location.reload();
+            }
+        }
+
+        function downloadLogs() {
+            const logElement = document.getElementById('log-stream');
+            if(!logElement) return;
+            const blob = new Blob([logElement.innerText], { type: 'text/plain' });
+            const elem = window.document.createElement('a');
+            elem.href = window.URL.createObjectURL(blob);
+            elem.download = 'logs.txt';
+            document.body.appendChild(elem); elem.click(); document.body.removeChild(elem);
+        }
+
+        <% if(user && user.hasDeployed) { %>
+            setInterval(() => {
+                fetch('/deploy/logs/<%= user.activeUnit %>')
+                    .then(res => res.json())
+                    .then(data => {
+                        const lb = document.getElementById('log-stream');
+                        if(lb) {
+                            lb.innerText = data.logs || lb.innerText;
+                            lb.scrollTop = lb.scrollHeight;
+                        }
+                    });
+            }, 5000);
+        <% } %>
+    </script>
+</body>
+</html>
