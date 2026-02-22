@@ -45,7 +45,9 @@
         .btn-action { background: rgba(255,255,255,0.05); color: white; border: 1px solid var(--border); padding: 8px 15px; border-radius: 8px; cursor: pointer; font-size: 0.8rem; transition: 0.2s; text-decoration: none; }
         
         input { width: 100%; padding: 12px; margin-top: 10px; border-radius: 8px; border: 1px solid #1e293b; background: rgba(0,0,0,0.4); color: white; box-sizing: border-box; outline: none; }
-        .terminal { background: #050a14; color: var(--matrix); padding: 20px; border-radius: 12px; font-family: 'Courier New', monospace; font-size: 13px; height: 350px; overflow-y: auto; border: 1px solid #1e293b; white-space: pre-wrap; position: relative; }
+        
+        /* PROFESSIONAL LOG BACKGROUND: WHITE WITH BLACK TEXT */
+        .terminal { background: #ffffff; color: #1a1a1a; padding: 20px; border-radius: 12px; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 13px; height: 350px; overflow-y: auto; border: 1px solid #cbd5e1; white-space: pre-wrap; position: relative; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); }
         
         .toggle-box { display: flex; align-items: center; justify-content: space-between; margin-top: 15px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px; font-size: 0.85rem; }
         .name-gen { display: flex; gap: 10px; align-items: center; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 10px; border: 1px dashed var(--border); }
@@ -107,7 +109,7 @@
                     </div>
                 <% } else { %>
                     <p style="font-size: 0.85rem; color: #94a3b8;">Enter any GitHub URL to scan for variables.</p>
-                    <input type="text" id="repoUrl" placeholder="https://github.com/user/repo" value="https://github.com/Vinny256/COMRADES-MD">
+                    <input type="text" id="repoUrl" placeholder="https://github.com/user/repo" value="">
                     
                     <button class="btn-deploy" id="scan-btn" onclick="checkAndAction(scanBlueprint)">
                         <i class="fa-solid fa-radar"></i> Scan Repository
@@ -160,10 +162,10 @@
         <% if(user && user.hasDeployed) { %>
         <div class="terminal-wrapper" style="margin-top: 30px;">
             <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                <h3 style="color: var(--matrix); margin:0;"><i class="fa-solid fa-terminal"></i> LIVE_STREAM</h3>
+                <h3 style="color: #ffffff; margin:0;"><i class="fa-solid fa-terminal"></i> CONSOLE_OUTPUT</h3>
                 <button class="btn-action" onclick="downloadLogs()"><i class="fa-solid fa-download"></i> Save Logs</button>
             </div>
-            <div class="terminal" id="log-stream">Handshaking...</div>
+            <div class="terminal" id="log-stream">Initializing stream...</div>
         </div>
         <% } %>
     </div>
@@ -196,6 +198,7 @@
 
         async function scanBlueprint() {
             const repoUrl = document.getElementById('repoUrl').value;
+            if(!repoUrl) return showToast("Enter a Repository URL", "#ef4444");
             const scanBtn = document.getElementById('scan-btn');
             scanBtn.disabled = true;
             scanBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Scanning...';
@@ -262,7 +265,8 @@
             document.querySelectorAll('.env-var-input').forEach(i => configVars[i.id.replace('var-', '')] = i.value);
             if(document.getElementById('procfile-toggle').checked) configVars["USE_PROCFILE"] = "true";
 
-            const res = await fetch('/launch/launch', { // Adjust if your route is /deploy/launch
+            // FIXED ROUTE: Changed to /deploy/launch to match the server prefix
+            const res = await fetch('/deploy/launch', { 
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ repoUrl, configVars })
