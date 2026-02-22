@@ -10,6 +10,9 @@ const path = require('path');
 const Heroku = require('heroku-client');
 
 const app = express();
+// --- FIX 1: TRUST HEROKU PROXY ---
+app.set('trust proxy', 1); 
+
 const heroku = new Heroku({ token: process.env.HEROKU_API_KEY });
 
 // --- CONFIGURATION ---
@@ -55,7 +58,9 @@ passport.deserializeUser((id, done) => {
 passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: "/auth/google/callback"
+    callbackURL: "/auth/google/callback",
+    // --- FIX 2: ENABLE PROXY FOR GOOGLE ---
+    proxy: true 
 }, async (accessToken, refreshToken, profile, done) => {
     try {
         let user = await User.findOne({ googleId: profile.id });
@@ -73,7 +78,9 @@ passport.use(new GoogleStrategy({
 passport.use(new GitHubStrategy({
     clientID: process.env.GITHUB_CLIENT_ID,
     clientSecret: process.env.GITHUB_CLIENT_SECRET,
-    callbackURL: "/auth/github/callback"
+    callbackURL: "/auth/github/callback",
+    // --- FIX 3: ENABLE PROXY FOR GITHUB ---
+    proxy: true 
 }, async (accessToken, refreshToken, profile, done) => {
     try {
         let user = await User.findOne({ githubId: profile.id });
