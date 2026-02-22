@@ -14,6 +14,7 @@ router.post('/scan', async (req, res) => {
     
     try {
         const cleanUrl = targetRepo.replace(/\/$/, "");
+        // We try 'main' first, then 'master' as a fallback for raw content
         const baseRaw = cleanUrl.replace('github.com', 'raw.githubusercontent.com') + '/main/';
         
         let requirements = [];
@@ -40,6 +41,7 @@ router.post('/scan', async (req, res) => {
                     description: "No blueprint found. Using Procfile startup logic." 
                 }];
             } catch (pErr) {
+                // Try one more time with 'master' branch instead of 'main'
                 return res.json({ success: false, message: "No app.json or Procfile found. Ensure your repo is public and branch is named 'main'." });
             }
         }
@@ -67,8 +69,10 @@ router.post('/launch', async (req, res) => {
 
     try {
         const finalRepo = repoUrl || OFFICIAL_REPO;
+        // Use the generated name from frontend if provided, else generate new
         const unitName = configVars.APP_NAME || `vinnie-unit-${Math.random().toString(36).substring(2, 8)}`;
 
+        // Create the App in the Grid
         const app = await heroku.post('/teams/apps', {
             body: {
                 name: unitName,
@@ -84,10 +88,12 @@ router.post('/launch', async (req, res) => {
             "GITHUB_REPO": finalRepo
         };
 
+        // Inject all variables
         await heroku.patch(`/apps/${app.name}/config-vars`, {
             body: finalConfig
         });
 
+        // Trigger Build - Uses the GitHub Archive API for the tarball
         const tarballUrl = `${finalRepo.replace(/\/$/, "")}/tarball/main`;
         await heroku.post(`/apps/${app.name}/builds`, {
             body: {
@@ -95,6 +101,7 @@ router.post('/launch', async (req, res) => {
             }
         });
 
+        // Update DB
         user.hasDeployed = true;
         user.activeUnit = app.name;
         await user.save();
@@ -122,7 +129,7 @@ router.post('/terminate', async (req, res) => {
     }
 });
 
-// 4. HACKER LOGS: Sanitized & Nairobi Timestamped
+// 4. HACKER LOGS: Sanitized with Kenya Time
 router.get('/logs/:appName', async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send('Unauthorized');
     try {
