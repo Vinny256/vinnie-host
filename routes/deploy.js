@@ -144,12 +144,18 @@ router.get('/logs/:appName', async (req, res) => {
 
         let sanitizedLogs = logData.data
             .split('\n')
-            // Remove the "Log session created" and "Logplex" system clutter
-            .filter(line => !line.includes('log-session') && !line.includes('heroku[logplex]'))
+            .filter(line => {
+                const lowerLine = line.toLowerCase();
+                // Strictly remove session creation messages and Heroku system overhead
+                return !lowerLine.includes('log session') && 
+                       !lowerLine.includes('logplex') && 
+                       !lowerLine.includes('app[api]');
+            })
             .join('\n')
             .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, req.user.displayName) 
+            // Replaces internal process tags with your display name for a cleaner look
             .replace(/app\[(web|worker|api)\.1\]:/g, `[${req.user.displayName}]:`) 
-            // Regex updated to catch full ISO strings with microseconds and offsets
+            // Converts all ISO timestamps to Nairobi Time
             .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|(\+|-)\d{2}:\d{2})/g, (match) => {
                 const localTime = new Date(match).toLocaleString('en-GB', { 
                     timeZone: 'Africa/Nairobi',
@@ -161,7 +167,8 @@ router.get('/logs/:appName', async (req, res) => {
                 return `[Nairobi Time | ${localTime}]`;
             });
 
-        res.json({ logs: sanitizedLogs || "No new logs yet..." });
+        // Ensure we send a meaningful message if all lines were filtered out
+        res.json({ logs: sanitizedLogs.trim() || "No new logs yet..." });
     } catch (err) {
         res.json({ logs: "SYSTEM: Handshaking with Unit Identity...\n" });
     }
