@@ -129,7 +129,7 @@ router.post('/terminate', async (req, res) => {
     }
 });
 
-// 4. HACKER LOGS: Sanitized with Kenya Time
+// 4. HACKER LOGS: Sanitized with Kenya Time & Stealth Filtering
 router.get('/logs/:appName', async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send('Unauthorized');
     try {
@@ -138,10 +138,19 @@ router.get('/logs/:appName', async (req, res) => {
         });
         const logData = await axios.get(logSession.logplex_url);
         
+        if (!logData.data || logData.data.trim() === "") {
+            return res.json({ logs: "No new logs yet..." });
+        }
+
         let sanitizedLogs = logData.data
+            .split('\n')
+            // Remove the "Log session created" and "Logplex" system clutter
+            .filter(line => !line.includes('log-session') && !line.includes('heroku[logplex]'))
+            .join('\n')
             .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, req.user.displayName) 
-            .replace(/app\[web\.1\]:/g, `[${req.user.displayName}]:`) 
-            .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z/g, (match) => {
+            .replace(/app\[(web|worker|api)\.1\]:/g, `[${req.user.displayName}]:`) 
+            // Regex updated to catch full ISO strings with microseconds and offsets
+            .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|(\+|-)\d{2}:\d{2})/g, (match) => {
                 const localTime = new Date(match).toLocaleString('en-GB', { 
                     timeZone: 'Africa/Nairobi',
                     hour: '2-digit', 
@@ -149,10 +158,10 @@ router.get('/logs/:appName', async (req, res) => {
                     second: '2-digit',
                     hour12: true 
                 });
-                return `[Nairobi, Kenya | ${localTime}]`;
+                return `[Nairobi Time | ${localTime}]`;
             });
 
-        res.json({ logs: sanitizedLogs });
+        res.json({ logs: sanitizedLogs || "No new logs yet..." });
     } catch (err) {
         res.json({ logs: "SYSTEM: Handshaking with Unit Identity...\n" });
     }
