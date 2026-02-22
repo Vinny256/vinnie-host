@@ -292,13 +292,15 @@
         }
 
         <% if(user && user.hasDeployed) { %>
+            let lastLogs = ""; 
             setInterval(() => {
                 fetch('/deploy/logs/<%= user.activeUnit %>')
                     .then(res => res.json())
                     .then(data => {
                         const lb = document.getElementById('log-stream');
-                        if(lb) {
-                            lb.innerText = data.logs || lb.innerText;
+                        if(lb && data.logs && data.logs !== lastLogs) {
+                            lastLogs = data.logs;
+                            lb.innerText = data.logs;
                             lb.scrollTop = lb.scrollHeight;
                         }
                     });
