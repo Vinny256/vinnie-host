@@ -7,6 +7,22 @@ const { User } = require('../models/User');
 const heroku = new Heroku({ token: process.env.HEROKU_API_KEY });
 const OFFICIAL_REPO = "https://github.com/Vinny256/COMRADES-MD-BOT";
 
+const normalizeRepo = (repo) => {
+    return (repo || "").trim().replace(/\/$/, "").toLowerCase();
+};
+
+const getPlanLimit = (plan) => {
+    const limits = {
+        free: 2,
+        startup: 5,
+        silver: 10,
+        platinum: 50,
+        gold: Infinity
+    };
+
+    return limits[plan] || 2;
+};
+
 // 1. DYNAMIC SCANNER: Detects app.json (Blueprints) OR Procfile
 router.post('/scan', async (req, res) => {
     const { repoUrl } = req.body;
@@ -63,10 +79,40 @@ router.post('/launch', async (req, res) => {
     const { configVars, repoUrl } = req.body;
     const user = await User.findByPk(req.user.id);
 
-    if (user.hasDeployed) return res.json({ success: false, message: "Your slot is already occupied!" });
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+    const finalRepo = repoUrl || OFFICIAL_REPO;
+    const selectedRepo = normalizeRepo(finalRepo);
+    const officialRepo = normalizeRepo(OFFICIAL_REPO);
+    const isOfficialBot = selectedRepo === officialRepo;
+
+    const deployedApps = Array.isArray(user.deployedApps) ? user.deployedApps : [];
+    const plan = user.plan || 'free';
+    const deployLimit = getPlanLimit(plan);
+    const currentDeployments = deployedApps.length;
+
+    if (plan !== 'gold') {
+        const officialBotAlreadyDeployed = user.officialBotDeployed || deployedApps.some(app => normalizeRepo(app.repoUrl) === officialRepo);
+        const reservedOfficialSlot = officialBotAlreadyDeployed ? 0 : 1;
+        const customDeployments = deployedApps.filter(app => normalizeRepo(app.repoUrl) !== officialRepo).length;
+        const customLimit = deployLimit - reservedOfficialSlot;
+
+        if (!isOfficialBot && customDeployments >= customLimit) {
+            return res.json({ 
+                success: false, 
+                message: `Your ${plan} plan allows ${deployLimit} backends, but 1 slot is reserved for COMRADES-MD-BOT. Deploy COMRADES-MD-BOT or upgrade your plan.` 
+            });
+        }
+
+        if (currentDeployments >= deployLimit) {
+            return res.json({ 
+                success: false, 
+                message: `Your ${plan} plan allows only ${deployLimit} backends. Upgrade to deploy more.` 
+            });
+        }
+    }
 
     try {
-        const finalRepo = repoUrl || OFFICIAL_REPO;
         const unitName = configVars.APP_NAME || `vinnie-unit-${Math.random().toString(36).substring(2, 8)}`;
 
         const app = await heroku.post('/teams/apps', {
@@ -95,11 +141,29 @@ router.post('/launch', async (req, res) => {
             }
         });
 
+        const newDeployment = {
+            appName: app.name,
+            repoUrl: finalRepo,
+            isOfficialBot: isOfficialBot,
+            createdAt: new Date().toISOString()
+        };
+
+        user.deployedApps = [...deployedApps, newDeployment];
         user.hasDeployed = true;
         user.activeUnit = app.name;
+
+        if (isOfficialBot) {
+            user.officialBotDeployed = true;
+        }
+
         await user.save();
 
-        res.json({ success: true, appName: app.name });
+        res.json({ 
+            success: true, 
+            appName: app.name,
+            appUrl: `https://${app.name}.herokuapp.com`,
+            customUrl: `https://${app.name}.gathuo.app`
+        });
     } catch (err) {
         console.error("Grid Launch Error:", err.message);
         res.status(500).json({ success: false, message: err.message });
@@ -109,13 +173,31 @@ router.post('/launch', async (req, res) => {
 // 3. TERMINATE
 router.post('/terminate', async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).json({ success: false });
+
+    const { appName } = req.body;
     const user = await User.findByPk(req.user.id);
-    if (!user.activeUnit) return res.json({ success: false, message: "No active unit found." });
+
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+    const deployedApps = Array.isArray(user.deployedApps) ? user.deployedApps : [];
+    const targetAppName = appName || user.activeUnit;
+
+    if (!targetAppName) return res.json({ success: false, message: "No active unit found." });
+
+    const targetApp = deployedApps.find(app => app.appName === targetAppName);
+
     try {
-        await heroku.delete(`/apps/${user.activeUnit}`);
-        user.hasDeployed = false;
-        user.activeUnit = null;
+        await heroku.delete(`/apps/${targetAppName}`);
+
+        const remainingApps = deployedApps.filter(app => app.appName !== targetAppName);
+
+        user.deployedApps = remainingApps;
+        user.hasDeployed = remainingApps.length > 0;
+        user.activeUnit = remainingApps.length > 0 ? remainingApps[remainingApps.length - 1].appName : null;
+        user.officialBotDeployed = remainingApps.some(app => normalizeRepo(app.repoUrl) === normalizeRepo(OFFICIAL_REPO));
+
         await user.save();
+
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ success: false, message: "Termination failed." });
