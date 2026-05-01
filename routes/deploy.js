@@ -5,7 +5,7 @@ const Heroku = require('heroku-client');
 const { User } = require('../models/User');
 
 const heroku = new Heroku({ token: process.env.HEROKU_API_KEY });
-const OFFICIAL_REPO = "https://github.com/Vinny256/COMRADES-MD";
+const OFFICIAL_REPO = "https://github.com/Vinny256/COMRADES-MD-BOT";
 
 // 1. DYNAMIC SCANNER: Detects app.json (Blueprints) OR Procfile
 router.post('/scan', async (req, res) => {
