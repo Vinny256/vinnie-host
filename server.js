@@ -1,11 +1,12 @@
 require('dotenv').config();
 const express = require('express');
-const mongoose = require('mongoose');
+const pg = require('pg');
 const session = require('express-session');
+const PgSession = require('connect-pg-simple')(session);
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const GitHubStrategy = require('passport-github2').Strategy;
-const User = require('./models/User');
+const { User, sequelize } = require('./models/User');
 const path = require('path');
 const Heroku = require('heroku-client');
 
@@ -23,35 +24,46 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // --- DATABASE ---
-mongoose.connect(process.env.MONGO_URI)
-    .then(async () => {
-        console.log('Vinnie Grid: Database Connected');
-        try {
-            const collections = await mongoose.connection.db.listCollections({ name: 'users' }).toArray();
-            if (collections.length > 0) {
-                await mongoose.connection.collection('users').dropIndex('email_1');
-                console.log('🛡️ Fixed: Broken email index removed.');
-            }
-        } catch (e) {
-            console.log('🚀 Grid Status: Database schema is clean.');
-        }
+sequelize.sync()
+    .then(() => {
+        console.log('Vinnie Grid: PostgreSQL Database Connected');
     })
-    .catch(err => console.error('Database Connection Error:', err));
+    .catch(err => console.error('PostgreSQL Connection Error:', err));
 
 // --- SESSION & AUTH ---
+const pgPool = new pg.Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+        rejectUnauthorized: false
+    }
+});
+
 app.use(session({
+    store: new PgSession({
+        pool: pgPool,
+        tableName: 'session',
+        createTableIfMissing: true
+    }),
     secret: process.env.SESSION_SECRET || 'vinnie_secret_key',
     resave: false,
-    saveUninitialized: true,
-    cookie: { secure: false } 
+    saveUninitialized: false,
+    cookie: { 
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 1000 * 60 * 60 * 24
+    } 
 }));
 
 app.use(passport.initialize());
 app.use(passport.session());
 
 passport.serializeUser((user, done) => done(null, user.id));
-passport.deserializeUser((id, done) => {
-    User.findById(id).then(user => done(null, user));
+passport.deserializeUser(async (id, done) => {
+    try {
+        const user = await User.findByPk(id);
+        done(null, user);
+    } catch (err) {
+        done(err, null);
+    }
 });
 
 // --- STRATEGIES ---
@@ -63,12 +75,12 @@ passport.use(new GoogleStrategy({
     proxy: true 
 }, async (accessToken, refreshToken, profile, done) => {
     try {
-        let user = await User.findOne({ googleId: profile.id });
+        let user = await User.findOne({ where: { googleId: profile.id } });
         if (!user) {
             user = await User.create({ 
                 googleId: profile.id, 
                 displayName: profile.displayName,
-                avatar: profile.photos[0].value 
+                avatar: profile.photos && profile.photos[0] ? profile.photos[0].value : null 
             });
         }
         return done(null, user);
@@ -83,12 +95,12 @@ passport.use(new GitHubStrategy({
     proxy: true 
 }, async (accessToken, refreshToken, profile, done) => {
     try {
-        let user = await User.findOne({ githubId: profile.id });
+        let user = await User.findOne({ where: { githubId: profile.id } });
         if (!user) {
             user = await User.create({ 
                 githubId: profile.id, 
                 displayName: profile.username || profile.displayName,
-                avatar: profile.photos[0].value 
+                avatar: profile.photos && profile.photos[0] ? profile.photos[0].value : null 
             });
         }
         return done(null, user);
