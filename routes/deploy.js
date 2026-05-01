@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const axios = require('axios');
 const Heroku = require('heroku-client');
-const User = require('../models/User');
+const { User } = require('../models/User');
 
 const heroku = new Heroku({ token: process.env.HEROKU_API_KEY });
 const OFFICIAL_REPO = "https://github.com/Vinny256/COMRADES-MD";
@@ -14,7 +14,6 @@ router.post('/scan', async (req, res) => {
     
     try {
         const cleanUrl = targetRepo.replace(/\/$/, "");
-        // We try 'main' first, then 'master' as a fallback for raw content
         const baseRaw = cleanUrl.replace('github.com', 'raw.githubusercontent.com') + '/main/';
         
         let requirements = [];
@@ -41,7 +40,6 @@ router.post('/scan', async (req, res) => {
                     description: "No blueprint found. Using Procfile startup logic." 
                 }];
             } catch (pErr) {
-                // Try one more time with 'master' branch instead of 'main'
                 return res.json({ success: false, message: "No app.json or Procfile found. Ensure your repo is public and branch is named 'main'." });
             }
         }
@@ -63,16 +61,14 @@ router.post('/launch', async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).json({ success: false, message: 'Please login first' });
     
     const { configVars, repoUrl } = req.body;
-    const user = await User.findById(req.user.id);
+    const user = await User.findByPk(req.user.id);
 
     if (user.hasDeployed) return res.json({ success: false, message: "Your slot is already occupied!" });
 
     try {
         const finalRepo = repoUrl || OFFICIAL_REPO;
-        // Use the generated name from frontend if provided, else generate new
         const unitName = configVars.APP_NAME || `vinnie-unit-${Math.random().toString(36).substring(2, 8)}`;
 
-        // Create the App in the Grid
         const app = await heroku.post('/teams/apps', {
             body: {
                 name: unitName,
@@ -88,12 +84,10 @@ router.post('/launch', async (req, res) => {
             "GITHUB_REPO": finalRepo
         };
 
-        // Inject all variables
         await heroku.patch(`/apps/${app.name}/config-vars`, {
             body: finalConfig
         });
 
-        // Trigger Build - Uses the GitHub Archive API for the tarball
         const tarballUrl = `${finalRepo.replace(/\/$/, "")}/tarball/main`;
         await heroku.post(`/apps/${app.name}/builds`, {
             body: {
@@ -101,7 +95,6 @@ router.post('/launch', async (req, res) => {
             }
         });
 
-        // Update DB
         user.hasDeployed = true;
         user.activeUnit = app.name;
         await user.save();
@@ -116,7 +109,7 @@ router.post('/launch', async (req, res) => {
 // 3. TERMINATE
 router.post('/terminate', async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).json({ success: false });
-    const user = await User.findById(req.user.id);
+    const user = await User.findByPk(req.user.id);
     if (!user.activeUnit) return res.json({ success: false, message: "No active unit found." });
     try {
         await heroku.delete(`/apps/${user.activeUnit}`);
@@ -129,7 +122,7 @@ router.post('/terminate', async (req, res) => {
     }
 });
 
-// 4. HACKER LOGS: Sanitized with Kenya Time & Stealth Filtering
+// 4. HACKER LOGS
 router.get('/logs/:appName', async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send('Unauthorized');
     try {
@@ -146,16 +139,13 @@ router.get('/logs/:appName', async (req, res) => {
             .split('\n')
             .filter(line => {
                 const lowerLine = line.toLowerCase();
-                // Strictly remove session creation messages and Heroku system overhead
                 return !lowerLine.includes('log session') && 
                        !lowerLine.includes('logplex') && 
                        !lowerLine.includes('app[api]');
             })
             .join('\n')
             .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, req.user.displayName) 
-            // Replaces internal process tags with your display name for a cleaner look
             .replace(/app\[(web|worker|api)\.1\]:/g, `[${req.user.displayName}]:`) 
-            // Converts all ISO timestamps to Nairobi Time
             .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|(\+|-)\d{2}:\d{2})/g, (match) => {
                 const localTime = new Date(match).toLocaleString('en-GB', { 
                     timeZone: 'Africa/Nairobi',
@@ -167,7 +157,6 @@ router.get('/logs/:appName', async (req, res) => {
                 return `[Nairobi Time | ${localTime}]`;
             });
 
-        // Ensure we send a meaningful message if all lines were filtered out
         res.json({ logs: sanitizedLogs.trim() || "No new logs yet..." });
     } catch (err) {
         res.json({ logs: "SYSTEM: Handshaking with Unit Identity...\n" });
