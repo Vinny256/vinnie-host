@@ -72,7 +72,7 @@ router.post('/scan', async (req, res) => {
     }
 });
 
-// 2. DYNAMIC LAUNCHER: Injects user vars + Admin vars
+// 2. DYNAMIC LAUNCHER
 router.post('/launch', async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).json({ success: false, message: 'Please login first' });
     
@@ -100,14 +100,14 @@ router.post('/launch', async (req, res) => {
         if (!isOfficialBot && customDeployments >= customLimit) {
             return res.json({ 
                 success: false, 
-                message: `Your ${plan} plan allows ${deployLimit} backends, but 1 slot is reserved for COMRADES-MD-BOT. Deploy COMRADES-MD-BOT or upgrade your plan.` 
+                message: `Your ${plan} plan allows ${deployLimit} backends, but 1 slot is reserved for COMRADES-MD-BOT.` 
             });
         }
 
         if (currentDeployments >= deployLimit) {
             return res.json({ 
                 success: false, 
-                message: `Your ${plan} plan allows only ${deployLimit} backends. Upgrade to deploy more.` 
+                message: `Your ${plan} plan allows only ${deployLimit} backends.` 
             });
         }
     }
@@ -130,15 +130,11 @@ router.post('/launch', async (req, res) => {
             "GITHUB_REPO": finalRepo
         };
 
-        await heroku.patch(`/apps/${app.name}/config-vars`, {
-            body: finalConfig
-        });
+        await heroku.patch(`/apps/${app.name}/config-vars`, { body: finalConfig });
 
         const tarballUrl = `${finalRepo.replace(/\/$/, "")}/tarball/main`;
         await heroku.post(`/apps/${app.name}/builds`, {
-            body: {
-                source_blob: { url: tarballUrl }
-            }
+            body: { source_blob: { url: tarballUrl } }
         });
 
         const newDeployment = {
@@ -152,16 +148,13 @@ router.post('/launch', async (req, res) => {
         user.hasDeployed = true;
         user.activeUnit = app.name;
 
-        if (isOfficialBot) {
-            user.officialBotDeployed = true;
-        }
+        if (isOfficialBot) user.officialBotDeployed = true;
 
         await user.save();
 
         res.json({ 
             success: true, 
             appName: app.name,
-            appUrl: `https://${app.name}.herokuapp.com`,
             customUrl: `https://${app.name}.gathuo.app`
         });
     } catch (err) {
@@ -177,14 +170,8 @@ router.post('/terminate', async (req, res) => {
     const { appName } = req.body;
     const user = await User.findByPk(req.user.id);
 
-    if (!user) return res.status(404).json({ success: false, message: "User not found" });
-
     const deployedApps = Array.isArray(user.deployedApps) ? user.deployedApps : [];
     const targetAppName = appName || user.activeUnit;
-
-    if (!targetAppName) return res.json({ success: false, message: "No active unit found." });
-
-    const targetApp = deployedApps.find(app => app.appName === targetAppName);
 
     try {
         await heroku.delete(`/apps/${targetAppName}`);
@@ -193,56 +180,34 @@ router.post('/terminate', async (req, res) => {
 
         user.deployedApps = remainingApps;
         user.hasDeployed = remainingApps.length > 0;
-        user.activeUnit = remainingApps.length > 0 ? remainingApps[remainingApps.length - 1].appName : null;
+        user.activeUnit = remainingApps.length ? remainingApps[remainingApps.length - 1].appName : null;
         user.officialBotDeployed = remainingApps.some(app => normalizeRepo(app.repoUrl) === normalizeRepo(OFFICIAL_REPO));
 
         await user.save();
 
         res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ success: false, message: "Termination failed." });
+    } catch {
+        res.status(500).json({ success: false });
     }
 });
 
-// 4. HACKER LOGS
+// 4. LOGS
 router.get('/logs/:appName', async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).send('Unauthorized');
-    try {
-        const logSession = await heroku.post(`/apps/${req.params.appName}/log-sessions`, {
-            body: { lines: 100, tail: false }
-        });
-        const logData = await axios.get(logSession.logplex_url);
-        
-        if (!logData.data || logData.data.trim() === "") {
-            return res.json({ logs: "No new logs yet..." });
-        }
+    const logSession = await heroku.post(`/apps/${req.params.appName}/log-sessions`, { body: { lines: 100 } });
+    const logData = await axios.get(logSession.logplex_url);
+    res.json({ logs: logData.data });
+});
 
-        let sanitizedLogs = logData.data
-            .split('\n')
-            .filter(line => {
-                const lowerLine = line.toLowerCase();
-                return !lowerLine.includes('log session') && 
-                       !lowerLine.includes('logplex') && 
-                       !lowerLine.includes('app[api]');
-            })
-            .join('\n')
-            .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, req.user.displayName) 
-            .replace(/app\[(web|worker|api)\.1\]:/g, `[${req.user.displayName}]:`) 
-            .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|(\+|-)\d{2}:\d{2})/g, (match) => {
-                const localTime = new Date(match).toLocaleString('en-GB', { 
-                    timeZone: 'Africa/Nairobi',
-                    hour: '2-digit', 
-                    minute: '2-digit', 
-                    second: '2-digit',
-                    hour12: true 
-                });
-                return `[Nairobi Time | ${localTime}]`;
-            });
+// 5. GET CONFIG VARS
+router.get('/config/:appName', async (req, res) => {
+    const config = await heroku.get(`/apps/${req.params.appName}/config-vars`);
+    res.json({ config });
+});
 
-        res.json({ logs: sanitizedLogs.trim() || "No new logs yet..." });
-    } catch (err) {
-        res.json({ logs: "SYSTEM: Handshaking with Unit Identity...\n" });
-    }
+// 6. UPDATE CONFIG VARS
+router.post('/config/:appName', async (req, res) => {
+    const updated = await heroku.patch(`/apps/${req.params.appName}/config-vars`, { body: req.body });
+    res.json({ updated });
 });
 
 module.exports = router;
