@@ -34,12 +34,32 @@ const User = sequelize.define('User', {
     activeUnit: {
         type: DataTypes.STRING,
         allowNull: true,
-        defaultValue: null // Will store the Heroku App Name once deployed
+        defaultValue: null // Will store the latest Heroku App Name once deployed
     },
     hasDeployed: {
         type: DataTypes.BOOLEAN,
         allowNull: false,
-        defaultValue: false // The "One Slot" lock
+        defaultValue: false // True when user has at least one deployment
+    },
+    plan: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        defaultValue: 'free' // free, startup, silver, platinum, gold
+    },
+    deployLimit: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 2 // Free tier gets 2 backends
+    },
+    deployedApps: {
+        type: DataTypes.JSONB,
+        allowNull: false,
+        defaultValue: [] // Stores all deployed apps
+    },
+    officialBotDeployed: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false // Tracks whether COMRADES-MD has been deployed
     }
 });
 
