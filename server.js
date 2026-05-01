@@ -24,7 +24,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // --- DATABASE ---
-sequelize.sync()
+sequelize.sync({ alter: true })
     .then(() => {
         console.log('Vinnie Grid: PostgreSQL Database Connected');
     })
